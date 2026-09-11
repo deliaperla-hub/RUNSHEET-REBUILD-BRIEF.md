@@ -118,29 +118,115 @@ select {
   color: var(--muted);
 }
 
-.people-bar {
+.roster {
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 12px;
   box-shadow: var(--shadow);
 }
 
-.people-row {
+.roster-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.roster-card {
+  flex: 1 1 118px;
+  min-width: 118px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.roster-card:hover {
+  border-color: var(--line-strong);
+}
+
+.roster-card-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.roster-card-quiet {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.roster-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-overdue {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--alert);
+}
+
+/* The load bar is the whole point: one glance shows who is carrying the
+   house and who is not. Widths are relative to the busiest person. */
+.roster-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.roster-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  min-width: 0;
+}
+
+.roster-detail {
+  font-size: 11.5px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-empty {
+  margin: 4px 2px;
+}
+
+.roster-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-}
-
-.person-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 10px 3px 3px;
-  border-radius: 999px;
-  background: var(--bg);
-  font-size: 13.5px;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12.5px;
 }
 
 .people-editor {
@@ -515,6 +601,11 @@ input.narrow {
 }
 
 @media (max-width: 560px) {
+  .roster-card {
+    flex: 0 0 108px;
+    min-width: 108px;
+  }
+
   .row-time {
     width: 60px;
   }

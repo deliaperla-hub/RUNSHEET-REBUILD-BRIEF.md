@@ -89,8 +89,17 @@ export default function MoneyView({ lists, patch, focus }) {
       rows.map((row) => (row.id === id ? { ...row, settled: !row.settled } : row))
     )
 
+  const focused = people.find((person) => person.id === focus) ?? null
+
   return (
     <div className="view">
+      {focused ? (
+        <p className="note">
+          Expenses below are filtered to {focused.name}. Standings stay on the whole
+          household — a balance only means something next to everyone else&apos;s.
+        </p>
+      ) : null}
+
       <section className="card">
         <SectionHeader title="Where everyone stands" meta={`${formatMoney(outstanding)} unsettled`} />
         {people.length === 0 ? (

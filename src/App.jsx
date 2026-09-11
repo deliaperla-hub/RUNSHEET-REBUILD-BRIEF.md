@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useHousehold } from './hooks/useHousehold.js'
 import { rollRepeats } from './lib/actions.js'
 import { today } from './lib/dates.js'
-import PeopleBar from './components/PeopleBar.jsx'
+import RosterStrip from './components/RosterStrip.jsx'
 import TodayView from './views/TodayView.jsx'
 import ChoresView from './views/ChoresView.jsx'
 import CalendarView from './views/CalendarView.jsx'
@@ -22,6 +22,7 @@ const TABS = [
 export default function App() {
   const { lists, patch } = useHousehold()
   const [tab, setTab] = useState('today')
+  const [focus, setFocus] = useState(null)
   const [day, setDay] = useState(today())
 
   // Roll completed repeating chores forward, now and whenever the date flips
@@ -38,6 +39,7 @@ export default function App() {
     return () => clearInterval(timer)
   }, [])
 
+  const focusedPerson = lists.people.find((person) => person.id === focus) ?? null
   const active = TABS.find((entry) => entry.id === tab) ?? TABS[0]
   const View = active.View
 
@@ -51,7 +53,7 @@ export default function App() {
             <p className="tagline">Everything the house has to do today, in order, with a name on it.</p>
           </div>
         </div>
-        <PeopleBar people={lists.people} patch={patch} />
+        <RosterStrip lists={lists} patch={patch} focus={focus} onFocus={setFocus} />
       </header>
 
       <nav className="tabs" aria-label="Views">
@@ -68,7 +70,7 @@ export default function App() {
       </nav>
 
       <main className="app-main">
-        <View lists={lists} patch={patch} focus={null} />
+        <View lists={lists} patch={patch} focus={focusedPerson ? focus : null} />
       </main>
 
       <footer className="app-footer">

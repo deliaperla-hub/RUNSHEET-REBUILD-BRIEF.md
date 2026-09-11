@@ -27,7 +27,8 @@ src/
   lib/money.js      currency formatting, net balances, banked chore points
   hooks/useHousehold.js   state + the single `patch(listName, updateFn)` API
   views/            Today, Chores, Calendar, Groceries, Meds, Money
-  components/       roster bar and small shared UI pieces
+  lib/load.js       what each person is currently carrying
+  components/       roster/load strip and small shared UI pieces
 ```
 
 ## The data model
@@ -52,11 +53,23 @@ removes them freely and nothing in the code depends on a particular name.
 Tracking the order in the brief:
 
 - [x] 1. Vite + React, local-only, all six views against localStorage
-- [ ] 2. Roster/load strip and focus filtering
+- [x] 2. Roster/load strip and focus filtering
 - [ ] 3. Supabase auth + sync behind the existing `patch()` call sites
 - [ ] 4. Paywall (schema trigger + Account panel with invite/join)
 - [ ] 5. Billing webhook and hosted checkout link
 - [ ] 6. Polish, build, deploy
+
+## The roster strip
+
+The strip across the top shows every household member with their current load
+— open chores plus events in the next week — as a number and a bar sized
+against the busiest person. Imbalance in who is doing the work is the thing
+the other family apps don't surface, so it gets the top of the screen.
+
+Tapping someone focuses every view on them. Two views say so rather than
+pretending: the grocery list is shared by the whole house, and the Money
+standings stay on everyone because a balance only means something next to the
+others.
 
 ## House rules
 

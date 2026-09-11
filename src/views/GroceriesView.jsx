@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { newId } from '../lib/model.js'
 import { EmptyState, Field, SectionHeader } from '../components/ui.jsx'
 
-export default function GroceriesView({ lists, patch }) {
-  const { groceries } = lists
+export default function GroceriesView({ lists, patch, focus }) {
+  const { groceries, people } = lists
+  const focused = people.find((person) => person.id === focus) ?? null
   const [title, setTitle] = useState('')
   const [qty, setQty] = useState('')
 
@@ -60,6 +61,12 @@ export default function GroceriesView({ lists, patch }) {
 
   return (
     <div className="view">
+      {focused ? (
+        <p className="note">
+          The grocery list is shared by the whole house, so it isn't filtered to {focused.name}.
+        </p>
+      ) : null}
+
       {groceries.length === 0 ? (
         <EmptyState title="The list is empty" hint="Everyone in the house shares this one list." />
       ) : null}
