@@ -719,3 +719,31 @@ p.account-strip {
   background: var(--alert-soft);
   color: var(--alert);
 }
+
+.invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.invite-code {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+.account-upgrade {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.account-row .link-btn + .link-btn {
+  margin-left: auto;
+}

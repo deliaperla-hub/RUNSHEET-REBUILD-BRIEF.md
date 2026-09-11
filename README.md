@@ -62,7 +62,7 @@ Tracking the order in the brief:
 - [x] 1. Vite + React, local-only, all six views against localStorage
 - [x] 2. Roster/load strip and focus filtering
 - [x] 3. Supabase auth + sync behind the existing `patch()` call sites
-- [ ] 4. Paywall (schema trigger + Account panel with invite/join)
+- [x] 4. Paywall (schema trigger + Account panel with invite/join)
 - [ ] 5. Billing webhook and hosted checkout link
 - [ ] 6. Polish, build, deploy
 
@@ -106,6 +106,27 @@ are the only two ways rows appear in `households`/`members`, both security
 definer, so a household can never exist without an owner. `members` has no
 insert policy at all: nothing can forge a membership by talking to the table
 directly.
+
+## The paywall is a database trigger
+
+Not a UI check. A free household seats exactly one person, enforced by
+`enforce_seat_limit`, a `before insert on members` trigger that refuses a
+second seat when `plan <> 'pro'`. It holds for every path into the table, so
+editing the client-side JavaScript gets you nothing — the browser only ever
+holds the anon key.
+
+`guard_household_billing`, a `before update on households` trigger, is the
+other half: nobody but the service role may change `plan`, `billing_ref`,
+`renews_at` or `invite_code`. Members can still rename their house.
+
+Two deliberate behaviours worth knowing:
+
+- Re-joining a household you are already in is a no-op, not a seat error.
+- A household downgraded to free keeps the members it already has. The
+  trigger guards new seats; it does not evict people over a lapsed payment.
+
+Pricing is per household, not per seat, and the free tier is feature-complete
+— meds included. The only thing Pro buys is room for the rest of the house.
 
 ## House rules
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { billingPortalUrl, checkoutLinkFor } from '../lib/supabase.js'
 import { Field } from './ui.jsx'
 
 const STATUS_LABEL = {
@@ -131,6 +132,107 @@ function ChooseHousehold({ onCreate, onJoin }) {
   )
 }
 
+
+function InviteCode({ code }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      // Clipboard blocked: the code is on screen to read out anyway.
+    }
+  }
+
+  return (
+    <div className="invite">
+      <code className="invite-code">{code}</code>
+      <button className="link-btn" onClick={copy}>
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
+function HouseholdPanel({ account }) {
+  const { household, members, role, session, isPro } = account
+  const [name, setName] = useState(household.name)
+  const [problem, setProblem] = useState(null)
+  const seats = members.length
+  const checkout = checkoutLinkFor(household, session.user?.email)
+
+  async function saveName(event) {
+    event.preventDefault()
+    setProblem(null)
+    try {
+      await account.renameHousehold(name)
+    } catch (renameError) {
+      setName(household.name)
+      setProblem(renameError.message ?? String(renameError))
+    }
+  }
+
+  return (
+    <div className="account-rows">
+      <div className="account-row">
+        <span className="dim">Signed in as</span>
+        <span>{session.user?.email}</span>
+      </div>
+
+      <form className="account-form" onSubmit={saveName}>
+        <Field label="Household name" grow>
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+        </Field>
+        <button type="submit" className="primary small" disabled={name.trim() === household.name}>
+          Rename
+        </button>
+      </form>
+
+      <div className="account-row">
+        <span className="dim">Plan</span>
+        <span>
+          {isPro ? 'Pro' : 'Free'} · {seats} {seats === 1 ? 'person' : 'people'}
+          {role === 'owner' ? ' · you own it' : ''}
+        </span>
+      </div>
+
+      {isPro ? (
+        <>
+          <p className="note">
+            Share this code with the rest of the house. Anyone who types it in joins this
+            household.
+          </p>
+          <InviteCode code={household.invite_code} />
+          {billingPortalUrl ? (
+            <a className="link-btn" href={billingPortalUrl} target="_blank" rel="noreferrer">
+              Manage or cancel the subscription
+            </a>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <p className="note">
+            Free covers one signed-in person on as many devices as you like, with every
+            feature — meds included. Pro is priced per household, not per person, and lets
+            the rest of the house join with an invite code.
+          </p>
+          {checkout ? (
+            <a className="primary account-upgrade" href={checkout} target="_blank" rel="noreferrer">
+              Upgrade this household to Pro
+            </a>
+          ) : (
+            <p className="note">No checkout link is configured for this build.</p>
+          )}
+        </>
+      )}
+
+      {problem ? <p className="note note-bad">{problem}</p> : null}
+    </div>
+  )
+}
+
 export default function AccountPanel({ account, open, onToggle }) {
   const { configured, session, household, status, error } = account
 
@@ -159,27 +261,19 @@ export default function AccountPanel({ account, open, onToggle }) {
             <ChooseHousehold onCreate={account.createHousehold} onJoin={account.joinHousehold} />
           ) : null}
 
-          {session && household ? (
-            <div className="account-rows">
-              <div className="account-row">
-                <span className="dim">Signed in as</span>
-                <span>{session.user?.email}</span>
-              </div>
-              <div className="account-row">
-                <span className="dim">Household</span>
-                <span>{household.name}</span>
-              </div>
-              <div className="account-row">
-                <span className="dim">Plan</span>
-                <span>{household.plan === 'pro' ? 'Pro' : 'Free'}</span>
-              </div>
-            </div>
-          ) : null}
+          {session && household ? <HouseholdPanel account={account} /> : null}
 
           {session ? (
-            <button className="link-btn" onClick={account.signOut}>
-              Sign out — this device keeps its copy
-            </button>
+            <div className="account-row">
+              <button className="link-btn" onClick={account.signOut}>
+                Sign out — this device keeps its copy
+              </button>
+              {household && account.role !== 'owner' ? (
+                <button className="link-btn" onClick={account.leaveHousehold}>
+                  Leave this household
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {error ? <p className="note note-bad">{error}</p> : null}

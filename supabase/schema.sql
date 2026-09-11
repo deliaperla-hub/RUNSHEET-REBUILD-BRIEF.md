@@ -79,8 +79,9 @@ create policy households_select on public.households
   for select to authenticated
   using (public.is_member(id));
 
--- Households are only ever created through create_household(), and only the
--- billing webhook (service role, which bypasses RLS) may change `plan`.
+-- Households are only ever created through create_household(). Members may
+-- rename their house; the guard_household_billing trigger below is what stops
+-- them touching plan, billing_ref, renews_at or invite_code.
 drop policy if exists households_update on public.households;
 create policy households_update on public.households
   for update to authenticated
@@ -211,6 +212,99 @@ $$;
 
 revoke all on function public.join_household(text) from public;
 grant execute on function public.join_household(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- The paywall
+--
+-- Both halves are enforced here, in the database, not in the UI. Editing the
+-- client-side JavaScript gets you nothing: the browser only ever holds the
+-- anon key, and these triggers run regardless of what it sends.
+-- ---------------------------------------------------------------------------
+
+-- Only the billing webhook, which uses the service-role key and never touches
+-- the browser, may set a household to Pro. Members can rename their house;
+-- they cannot promote it.
+create or replace function public.guard_household_billing()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.id is distinct from old.id
+     or new.created_at is distinct from old.created_at
+     or new.invite_code is distinct from old.invite_code
+     or new.plan is distinct from old.plan
+     or new.billing_ref is distinct from old.billing_ref
+     or new.renews_at is distinct from old.renews_at
+  then
+    -- service_role (the webhook) and superusers (migrations) may pass.
+    if not pg_has_role(current_user, 'service_role', 'member') then
+      raise exception 'plan, billing and invite fields are set by the payment webhook only'
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_household_billing on public.households;
+create trigger guard_household_billing
+  before update on public.households
+  for each row execute function public.guard_household_billing();
+
+-- A free household seats exactly one person. This is a `before insert on
+-- members` trigger rather than a check in join_household() so that it holds
+-- for every path into the table, now and later.
+create or replace function public.enforce_seat_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  current_plan text;
+  seats integer;
+begin
+  -- Re-joining a household you are already in is a no-op upstream; it must
+  -- not be mistaken for taking a second seat.
+  if exists (
+    select 1 from public.members m
+    where m.household_id = new.household_id and m.user_id = new.user_id
+  ) then
+    return new;
+  end if;
+
+  -- The row lock closes the race where two invitees join at the same moment
+  -- and both count the seats before either takes one.
+  select h.plan into current_plan
+  from public.households h
+  where h.id = new.household_id
+  for update;
+
+  if current_plan is null then
+    raise exception 'no such household' using errcode = 'P0002';
+  end if;
+
+  if current_plan = 'pro' then
+    return new;
+  end if;
+
+  select count(*) into seats
+  from public.members m
+  where m.household_id = new.household_id;
+
+  if seats >= 1 then
+    raise exception 'This household is on the free plan, which covers one person. Upgrade to Pro to add someone.'
+      using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_seat_limit on public.members;
+create trigger enforce_seat_limit
+  before insert on public.members
+  for each row execute function public.enforce_seat_limit();
 
 -- ---------------------------------------------------------------------------
 -- Realtime: one device's edit shows up live on another.

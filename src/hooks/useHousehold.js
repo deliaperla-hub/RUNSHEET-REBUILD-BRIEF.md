@@ -24,6 +24,7 @@ export function useHousehold() {
   const [items, setItems] = useState(() => loadItems() ?? seedItems())
   const [session, setSession] = useState(null)
   const [household, setHousehold] = useState(null)
+  const [members, setMembers] = useState([])
   const [role, setRole] = useState(null)
   const [status, setStatus] = useState(isSupabaseConfigured ? 'loading' : 'local')
   const [error, setError] = useState(null)
@@ -89,6 +90,7 @@ export function useHousehold() {
         syncedRef.current = new Map()
         readyRef.current = false
         setHousehold(null)
+        setMembers([])
         setRole(null)
         setStatus('signed-out')
       }
@@ -119,6 +121,7 @@ export function useHousehold() {
     }
     if (!memberships || memberships.length === 0) {
       setHousehold(null)
+      setMembers([])
       setRole(null)
       setStatus('no-household')
       return
@@ -138,6 +141,24 @@ export function useHousehold() {
     setRole(memberships[0].role)
     setHousehold(households?.[0] ?? null)
   }, [])
+
+  // Who is in the household. Emails live in auth.users, which clients cannot
+  // read, so this is seats and roles — enough to show what the plan covers
+  // without handing every member everyone else's address.
+  const loadMembers = useCallback(async (householdId) => {
+    if (!supabase || !householdId) return
+    const { data } = await supabase
+      .from('members')
+      .select('user_id, role, joined_at')
+      .eq('household_id', householdId)
+      .order('joined_at', { ascending: true })
+    setMembers(data ?? [])
+  }, [])
+
+  useEffect(() => {
+    if (!household?.id) return
+    loadMembers(household.id)
+  }, [household?.id, loadMembers])
 
   useEffect(() => {
     if (!session?.user?.id) return
@@ -257,6 +278,39 @@ export function useHousehold() {
     await supabase.auth.signOut()
   }, [])
 
+  const renameHousehold = useCallback(
+    async (name) => {
+      if (!supabase || !household?.id) return
+      const trimmed = name.trim()
+      if (!trimmed || trimmed === household.name) return
+      const { data, error: renameError } = await supabase
+        .from('households')
+        .update({ name: trimmed })
+        .eq('id', household.id)
+        .select()
+        .limit(1)
+      if (renameError) throw renameError
+      if (data?.[0]) setHousehold(data[0])
+    },
+    [household?.id, household?.name]
+  )
+
+  const leaveHousehold = useCallback(async () => {
+    if (!supabase || !session?.user?.id || !household?.id) return
+    const { error: leaveError } = await supabase
+      .from('members')
+      .delete()
+      .eq('household_id', household.id)
+      .eq('user_id', session.user.id)
+    if (leaveError) throw leaveError
+    syncedRef.current = new Map()
+    readyRef.current = false
+    setHousehold(null)
+    setMembers([])
+    setRole(null)
+    setStatus('no-household')
+  }, [session?.user?.id, household?.id])
+
   const createHousehold = useCallback(
     async (name) => {
       if (!supabase) throw new Error('Sign-in is not configured for this build.')
@@ -284,13 +338,17 @@ export function useHousehold() {
     configured: isSupabaseConfigured,
     session,
     household,
+    members,
     role,
     status,
     error,
+    isPro: household?.plan === 'pro',
     signIn,
     signOut,
     createHousehold,
     joinHousehold,
+    renameHousehold,
+    leaveHousehold,
     refresh: () => household?.id && pull(household.id),
   }
 
