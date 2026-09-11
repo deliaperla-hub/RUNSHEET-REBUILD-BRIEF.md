@@ -619,3 +619,103 @@ input.narrow {
     width: 100%;
   }
 }
+
+/* Account -------------------------------------------------------------- */
+
+.account {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.account-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+p.account-strip {
+  cursor: default;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  margin: 0;
+}
+
+.account-caret {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.sync-synced {
+  background: var(--good);
+}
+
+.sync-error {
+  background: var(--alert);
+}
+
+.sync-loading {
+  background: var(--points);
+}
+
+.account-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.account-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.account-form .note {
+  flex-basis: 100%;
+}
+
+.account-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.account-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note-bad {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--alert-soft);
+  color: var(--alert);
+}

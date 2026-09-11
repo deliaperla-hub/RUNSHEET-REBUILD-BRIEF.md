@@ -2,16 +2,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyList, toLists } from '../lib/model.js'
 import { STORAGE_KEY, loadItems, saveItems } from '../lib/storage.js'
 import { seedItems } from '../lib/seed.js'
+import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
+import {
+  diffForPush,
+  itemsToRows,
+  mergeRemote,
+  rowsToItems,
+  sameItems,
+  toSyncedMap,
+} from '../lib/sync.js'
+
+const PUSH_DEBOUNCE_MS = 400
 
 // The single source of truth for household data.
 //
-// Today this is localStorage-only: the app works fully offline and
-// signed-out on one device. The Supabase sync layer slots in behind this
-// same surface later, so UI components never need to know whether they are
-// local-only or synced — they only ever call patch().
+// localStorage is written unconditionally, so the app is a complete product
+// offline, signed out, on one device. When someone signs in, the same rows are
+// mirrored to Supabase and merged three ways against what other devices did.
+// UI components never learn which mode they are in: they only call patch().
 export function useHousehold() {
   const [items, setItems] = useState(() => loadItems() ?? seedItems())
+  const [session, setSession] = useState(null)
+  const [household, setHousehold] = useState(null)
+  const [role, setRole] = useState(null)
+  const [status, setStatus] = useState(isSupabaseConfigured ? 'loading' : 'local')
+  const [error, setError] = useState(null)
+
   const skipNextWrite = useRef(false)
+  const syncedRef = useRef(new Map())
+  const itemsRef = useRef(items)
+  const readyRef = useRef(false)
+
+  itemsRef.current = items
+
+  // --- local persistence -------------------------------------------------
 
   useEffect(() => {
     if (skipNextWrite.current) {
@@ -21,8 +45,6 @@ export function useHousehold() {
     saveItems(items)
   }, [items])
 
-  // Another tab of the same app edited the list: adopt it rather than
-  // racing it back to our own stale copy.
   useEffect(() => {
     function onStorage(event) {
       if (event.key !== STORAGE_KEY) return
@@ -37,8 +59,6 @@ export function useHousehold() {
 
   const lists = useMemo(() => toLists(items), [items])
 
-  // The single mutation API. updateFn receives the current rows of one list
-  // ({ id, ...fields }) and returns the rows it should become.
   const patch = useCallback((listName, updateFn) => {
     setItems((current) => {
       const rows = toLists(current)[listName]
@@ -49,5 +69,230 @@ export function useHousehold() {
     })
   }, [])
 
-  return { items, lists, patch }
+  // --- auth --------------------------------------------------------------
+
+  useEffect(() => {
+    if (!supabase) return undefined
+    let alive = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return
+      setSession(data.session ?? null)
+      if (!data.session) setStatus('signed-out')
+    })
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next ?? null)
+      if (!next) {
+        // Signing out drops the mirror, not the data: the device keeps its
+        // own copy and carries on working.
+        syncedRef.current = new Map()
+        readyRef.current = false
+        setHousehold(null)
+        setRole(null)
+        setStatus('signed-out')
+      }
+    })
+
+    return () => {
+      alive = false
+      subscription?.subscription?.unsubscribe()
+    }
+  }, [])
+
+  // --- which household am I in? -----------------------------------------
+
+  const loadMembership = useCallback(async (userId) => {
+    if (!supabase || !userId) return
+    setError(null)
+    const { data: memberships, error: membersError } = await supabase
+      .from('members')
+      .select('household_id, role')
+      .eq('user_id', userId)
+      .order('joined_at', { ascending: true })
+      .limit(1)
+
+    if (membersError) {
+      setError(membersError.message)
+      setStatus('error')
+      return
+    }
+    if (!memberships || memberships.length === 0) {
+      setHousehold(null)
+      setRole(null)
+      setStatus('no-household')
+      return
+    }
+
+    const { data: households, error: householdError } = await supabase
+      .from('households')
+      .select('*')
+      .eq('id', memberships[0].household_id)
+      .limit(1)
+
+    if (householdError) {
+      setError(householdError.message)
+      setStatus('error')
+      return
+    }
+    setRole(memberships[0].role)
+    setHousehold(households?.[0] ?? null)
+  }, [])
+
+  useEffect(() => {
+    if (!session?.user?.id) return
+    setStatus('loading')
+    loadMembership(session.user.id)
+  }, [session, loadMembership])
+
+  // --- pull + merge ------------------------------------------------------
+
+  const pull = useCallback(async (householdId) => {
+    if (!supabase || !householdId) return
+    const { data, error: fetchError } = await supabase
+      .from('items')
+      .select('id, kind, data, updated_at')
+      .eq('household_id', householdId)
+
+    if (fetchError) {
+      setError(fetchError.message)
+      setStatus('error')
+      return
+    }
+
+    const remote = rowsToItems(data ?? [])
+    const merged = mergeRemote(itemsRef.current, remote, syncedRef.current)
+    // What we now believe the server holds. Rows we are about to push are
+    // deliberately absent, so the next push still sees them as changed.
+    syncedRef.current = toSyncedMap(remote.filter((item) => merged.some((m) => m.id === item.id)))
+    readyRef.current = true
+    if (!sameItems(itemsRef.current, merged)) {
+      itemsRef.current = merged
+      setItems(merged)
+    }
+    setStatus('synced')
+  }, [])
+
+  useEffect(() => {
+    if (!household?.id) return
+    // First pull after sign-in unions the device's existing list with the
+    // household's — signing in keeps your data, it never starts you empty.
+    pull(household.id)
+  }, [household?.id, pull])
+
+  // --- push --------------------------------------------------------------
+
+  useEffect(() => {
+    if (!supabase || !household?.id || !readyRef.current) return undefined
+
+    const timer = setTimeout(async () => {
+      const { upserts, deletes } = diffForPush(items, syncedRef.current)
+      if (upserts.length === 0 && deletes.length === 0) return
+
+      try {
+        if (upserts.length > 0) {
+          const { error: upsertError } = await supabase
+            .from('items')
+            .upsert(itemsToRows(upserts, household.id), { onConflict: 'household_id,id' })
+          if (upsertError) throw upsertError
+        }
+        if (deletes.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('items')
+            .delete()
+            .eq('household_id', household.id)
+            .in('id', deletes)
+          if (deleteError) throw deleteError
+        }
+        syncedRef.current = toSyncedMap(items)
+        setError(null)
+        setStatus('synced')
+      } catch (pushError) {
+        // The local copy is still correct and still saved; the diff will be
+        // retried on the next edit or the next realtime nudge.
+        setError(pushError.message ?? String(pushError))
+        setStatus('error')
+      }
+    }, PUSH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [items, household?.id])
+
+  // --- realtime ----------------------------------------------------------
+
+  useEffect(() => {
+    if (!supabase || !household?.id) return undefined
+    const channel = supabase
+      .channel(`items:${household.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'items',
+          filter: `household_id=eq.${household.id}`,
+        },
+        () => pull(household.id)
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [household?.id, pull])
+
+  // --- account actions ---------------------------------------------------
+
+  const signIn = useCallback(async (email) => {
+    if (!supabase) throw new Error('Sign-in is not configured for this build.')
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    })
+    if (signInError) throw signInError
+  }, [])
+
+  const signOut = useCallback(async () => {
+    if (!supabase) return
+    await supabase.auth.signOut()
+  }, [])
+
+  const createHousehold = useCallback(
+    async (name) => {
+      if (!supabase) throw new Error('Sign-in is not configured for this build.')
+      const { data, error: rpcError } = await supabase.rpc('create_household', { name })
+      if (rpcError) throw rpcError
+      setRole('owner')
+      setHousehold(data)
+      return data
+    },
+    []
+  )
+
+  const joinHousehold = useCallback(async (inviteCode) => {
+    if (!supabase) throw new Error('Sign-in is not configured for this build.')
+    const { data, error: rpcError } = await supabase.rpc('join_household', {
+      invite_code: inviteCode,
+    })
+    if (rpcError) throw rpcError
+    setRole('member')
+    setHousehold(data)
+    return data
+  }, [])
+
+  const account = {
+    configured: isSupabaseConfigured,
+    session,
+    household,
+    role,
+    status,
+    error,
+    signIn,
+    signOut,
+    createHousehold,
+    joinHousehold,
+    refresh: () => household?.id && pull(household.id),
+  }
+
+  return { items, lists, patch, account }
 }

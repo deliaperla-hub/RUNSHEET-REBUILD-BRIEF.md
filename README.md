@@ -14,7 +14,12 @@ npm run build    # -> dist/
 npm run preview
 ```
 
-No backend is required. The app works fully offline on a single device.
+No backend is required. With no environment variables set, the app is a
+complete local-only product: fully offline, signed out, one device.
+
+To turn on multi-device sync, copy `.env.example` to `.env`, fill in a
+Supabase project's URL and anon key, and run `supabase/schema.sql` against it.
+Vite bakes these in at **build** time, so set them before the first build.
 
 ## Where things live
 
@@ -28,6 +33,8 @@ src/
   hooks/useHousehold.js   state + the single `patch(listName, updateFn)` API
   views/            Today, Chores, Calendar, Groceries, Meds, Money
   lib/load.js       what each person is currently carrying
+  lib/sync.js       three-way merge and push diff (pure, no network)
+  lib/supabase.js   client, or null when the build has no backend configured
   components/       roster/load strip and small shared UI pieces
 ```
 
@@ -54,7 +61,7 @@ Tracking the order in the brief:
 
 - [x] 1. Vite + React, local-only, all six views against localStorage
 - [x] 2. Roster/load strip and focus filtering
-- [ ] 3. Supabase auth + sync behind the existing `patch()` call sites
+- [x] 3. Supabase auth + sync behind the existing `patch()` call sites
 - [ ] 4. Paywall (schema trigger + Account panel with invite/join)
 - [ ] 5. Billing webhook and hosted checkout link
 - [ ] 6. Polish, build, deploy
@@ -70,6 +77,35 @@ Tapping someone focuses every view on them. Two views say so rather than
 pretending: the grocery list is shared by the whole house, and the Money
 standings stay on everyone because a balance only means something next to the
 others.
+
+## Sync
+
+`useHousehold` writes to localStorage unconditionally. When someone signs in
+(Supabase email OTP), the same rows are mirrored to the `items` table for
+their household.
+
+Sync is a three-way merge against `synced` — what the device last believed the
+server held. That ancestor is what lets two people edit different things
+without clobbering each other, and what lets a delete on one device stay
+deleted instead of being resurrected by the other. Pushes send only rows whose
+`updated_at` changed, plus the ids that disappeared. Postgres realtime on
+`items` nudges a re-pull when another device writes.
+
+First sign-in unions the device's existing list with the household's, so it
+feels like keeping your data rather than losing it.
+
+None of this reaches the views: they still only call `patch()`.
+
+## Backend
+
+`supabase/schema.sql` is re-runnable and sets up `households`, `members` and
+`items` with row-level security via an `is_member(household_id)`
+security-definer helper — a household's data is invisible to anyone not in
+`members` for it. `create_household(name)` and `join_household(invite_code)`
+are the only two ways rows appear in `households`/`members`, both security
+definer, so a household can never exist without an owner. `members` has no
+insert policy at all: nothing can forge a membership by talking to the table
+directly.
 
 ## House rules
 

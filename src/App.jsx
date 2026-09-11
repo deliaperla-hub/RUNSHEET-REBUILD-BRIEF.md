@@ -3,6 +3,7 @@ import { useHousehold } from './hooks/useHousehold.js'
 import { rollRepeats } from './lib/actions.js'
 import { today } from './lib/dates.js'
 import RosterStrip from './components/RosterStrip.jsx'
+import AccountPanel from './components/AccountPanel.jsx'
 import TodayView from './views/TodayView.jsx'
 import ChoresView from './views/ChoresView.jsx'
 import CalendarView from './views/CalendarView.jsx'
@@ -20,9 +21,10 @@ const TABS = [
 ]
 
 export default function App() {
-  const { lists, patch } = useHousehold()
+  const { lists, patch, account } = useHousehold()
   const [tab, setTab] = useState('today')
   const [focus, setFocus] = useState(null)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [day, setDay] = useState(today())
 
   // Roll completed repeating chores forward, now and whenever the date flips
@@ -53,6 +55,11 @@ export default function App() {
             <p className="tagline">Everything the house has to do today, in order, with a name on it.</p>
           </div>
         </div>
+        <AccountPanel
+          account={account}
+          open={accountOpen}
+          onToggle={() => setAccountOpen((value) => !value)}
+        />
         <RosterStrip lists={lists} patch={patch} focus={focus} onFocus={setFocus} />
       </header>
 
@@ -74,7 +81,11 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <span>Saved on this device.</span>
+        <span>
+          {account.household
+            ? `Saved on this device and synced to ${account.household.name}.`
+            : 'Saved on this device.'}
+        </span>
       </footer>
     </div>
   )
