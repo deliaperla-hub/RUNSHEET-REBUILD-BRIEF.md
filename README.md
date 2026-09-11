@@ -63,7 +63,7 @@ Tracking the order in the brief:
 - [x] 2. Roster/load strip and focus filtering
 - [x] 3. Supabase auth + sync behind the existing `patch()` call sites
 - [x] 4. Paywall (schema trigger + Account panel with invite/join)
-- [ ] 5. Billing webhook and hosted checkout link
+- [x] 5. Billing webhook and hosted checkout link
 - [ ] 6. Polish, build, deploy
 
 ## The roster strip
@@ -127,6 +127,36 @@ Two deliberate behaviours worth knowing:
 
 Pricing is per household, not per seat, and the free tier is feature-complete
 — meds included. The only thing Pro buys is room for the rest of the house.
+
+## Billing
+
+`supabase/functions/billing-webhook` is the only thing allowed to set
+`households.plan = 'pro'`. It runs on the service-role key, which never
+reaches the browser, and `guard_household_billing` refuses the write to
+anyone else.
+
+The signature is verified against the **raw** request bytes before the body is
+parsed, with a constant-time comparison. `verify.ts` is deliberately
+dependency-free so the security boundary can be tested with nothing mocked:
+
+```bash
+npm run test:webhook
+```
+
+The household rides through checkout as custom data
+(`checkout[custom][household_id]`), so the webhook never has to guess which
+household paid.
+
+One nuance worth keeping: in Lemon Squeezy, `cancelled` means "will not
+renew", not "access revoked". A household that cancels stays on Pro until
+`subscription_expired` actually arrives — people keep what they paid for.
+
+Cancelling is a link in the account panel (`VITE_BILLING_PORTAL_URL`), not an
+email to support: US click-to-cancel / ROSCA rules apply regardless of who the
+merchant of record is.
+
+See `supabase/tests/README.md` for how to run the schema, RLS and paywall
+tests against a throwaway Postgres.
 
 ## House rules
 
