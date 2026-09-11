@@ -49,7 +49,9 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
+          {/* The header mark sits under 58px, so it takes the small-size
+              cut with its thicker strokes. */}
+          <img className="brand-mark" src="/brand/mark-small.svg" alt="" width="34" height="34" />
           <div>
             <h1>Runsheet</h1>
             <p className="tagline">Everything the house has to do today, in order, with a name on it.</p>

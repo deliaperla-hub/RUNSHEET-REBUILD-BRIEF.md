@@ -82,28 +82,7 @@ select {
   width: 34px;
   height: 34px;
   flex: none;
-  border-radius: 22.4%;
-  background: var(--accent);
-  position: relative;
-  overflow: hidden;
-}
-
-.brand-mark::before,
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  height: 11%;
-  background: var(--surface);
-}
-
-.brand-mark::before {
-  top: 38%;
-}
-
-.brand-mark::after {
-  top: 62%;
+  display: block;
 }
 
 .brand h1 {
@@ -553,7 +532,9 @@ input.narrow {
 .link-btn {
   border: none;
   background: none;
-  padding: 0;
+  /* Vertical padding is here for the tap target, not the look: without it
+     these land under the 24px minimum on a phone. */
+  padding: 4px 2px;
   color: var(--accent);
   font-size: 12.5px;
   cursor: pointer;
@@ -601,9 +582,26 @@ input.narrow {
 }
 
 @media (max-width: 560px) {
+  /* Thumbs, not cursors. */
+  .check,
+  .check-spacer {
+    width: 24px;
+    height: 24px;
+  }
+
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .roster {
+    padding: 10px;
+  }
+
   .roster-card {
-    flex: 0 0 108px;
-    min-width: 108px;
+    flex: 0 0 102px;
+    min-width: 102px;
+    padding: 9px 8px;
   }
 
   .row-time {
@@ -641,13 +639,6 @@ input.narrow {
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
-}
-
-p.account-strip {
-  cursor: default;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  margin: 0;
 }
 
 .account-caret {

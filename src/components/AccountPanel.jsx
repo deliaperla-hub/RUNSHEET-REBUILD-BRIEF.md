@@ -236,13 +236,9 @@ function HouseholdPanel({ account }) {
 export default function AccountPanel({ account, open, onToggle }) {
   const { configured, session, household, status, error } = account
 
-  if (!configured) {
-    return (
-      <p className="account-strip dim">
-        This build has no backend configured — everything is saved on this device.
-      </p>
-    )
-  }
+  // A build with no backend is not a degraded build, so it gets no banner
+  // explaining itself. The footer already says where the data lives.
+  if (!configured) return null
 
   return (
     <div className="account">

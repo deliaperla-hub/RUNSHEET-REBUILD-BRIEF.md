@@ -10,6 +10,7 @@ is the full spec and the source of truth for what this should become.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
+npm test         # 67 checks, no network, no database
 npm run build    # -> dist/
 npm run preview
 ```
@@ -35,8 +36,17 @@ src/
   lib/load.js       what each person is currently carrying
   lib/sync.js       three-way merge and push diff (pure, no network)
   lib/supabase.js   client, or null when the build has no backend configured
-  components/       roster/load strip and small shared UI pieces
+  components/       roster/load strip, account panel, small shared pieces
+test/               unit tests for every pure module
+supabase/           schema, billing webhook, and backend tests
+public/brand/       the mark, in its five cuts
 ```
+
+Everything with real logic in it is a pure module under `src/lib`, which is
+why `npm test` needs neither a browser nor a database. `npm test` covers the
+item model, date and repeat arithmetic, chore/med actions, the sync merge and
+push diff, money balances, per-person load, and the billing webhook's
+signature verification.
 
 ## The data model
 
@@ -64,7 +74,7 @@ Tracking the order in the brief:
 - [x] 3. Supabase auth + sync behind the existing `patch()` call sites
 - [x] 4. Paywall (schema trigger + Account panel with invite/join)
 - [x] 5. Billing webhook and hosted checkout link
-- [ ] 6. Polish, build, deploy
+- [x] 6. Polish, build, deploy
 
 ## The roster strip
 
@@ -157,6 +167,24 @@ merchant of record is.
 
 See `supabase/tests/README.md` for how to run the schema, RLS and paywall
 tests against a throwaway Postgres.
+
+## Brand
+
+`public/brand/` holds the mark in five cuts — magenta, cyan, knockout,
+single-colour, and a small-size cut with thicker strokes for anything under
+about 58px (the header mark uses it). Never combine both accent colours in
+one mark.
+
+The geometry is the brief's, not an approximation: live area inset 18% x 17%,
+roof at a 3:1 pitch and 1.25 row-heights tall, three equal rows, 22.4% corner
+radius. Those numbers close exactly — the third row lands flush with the
+bottom of the live area.
+
+## Deploying
+
+See [DEPLOY.md](./DEPLOY.md). The short version: none of it is required. With
+no environment variables set, Runsheet builds as a complete local-only
+product, and the build does not even fetch the Supabase client library.
 
 ## House rules
 

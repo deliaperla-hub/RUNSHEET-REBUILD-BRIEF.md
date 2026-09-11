@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyList, toLists } from '../lib/model.js'
 import { STORAGE_KEY, loadItems, saveItems } from '../lib/storage.js'
 import { seedItems } from '../lib/seed.js'
-import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
+import { getSupabase, isSupabaseConfigured } from '../lib/supabase.js'
 import {
   diffForPush,
   itemsToRows,
@@ -28,6 +28,19 @@ export function useHousehold() {
   const [role, setRole] = useState(null)
   const [status, setStatus] = useState(isSupabaseConfigured ? 'loading' : 'local')
   const [error, setError] = useState(null)
+  const [supabase, setSupabase] = useState(null)
+
+  // The client library is fetched only when this build has a backend.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined
+    let alive = true
+    getSupabase().then((client) => {
+      if (alive) setSupabase(client)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const skipNextWrite = useRef(false)
   const syncedRef = useRef(new Map())
@@ -100,7 +113,7 @@ export function useHousehold() {
       alive = false
       subscription?.subscription?.unsubscribe()
     }
-  }, [])
+  }, [supabase])
 
   // --- which household am I in? -----------------------------------------
 
@@ -140,7 +153,7 @@ export function useHousehold() {
     }
     setRole(memberships[0].role)
     setHousehold(households?.[0] ?? null)
-  }, [])
+  }, [supabase])
 
   // Who is in the household. Emails live in auth.users, which clients cannot
   // read, so this is seats and roles — enough to show what the plan covers
@@ -153,18 +166,18 @@ export function useHousehold() {
       .eq('household_id', householdId)
       .order('joined_at', { ascending: true })
     setMembers(data ?? [])
-  }, [])
+  }, [supabase])
 
   useEffect(() => {
-    if (!household?.id) return
+    if (!supabase || !household?.id) return
     loadMembers(household.id)
-  }, [household?.id, loadMembers])
+  }, [supabase, household?.id, loadMembers])
 
   useEffect(() => {
-    if (!session?.user?.id) return
+    if (!supabase || !session?.user?.id) return
     setStatus('loading')
     loadMembership(session.user.id)
-  }, [session, loadMembership])
+  }, [supabase, session, loadMembership])
 
   // --- pull + merge ------------------------------------------------------
 
@@ -192,14 +205,14 @@ export function useHousehold() {
       setItems(merged)
     }
     setStatus('synced')
-  }, [])
+  }, [supabase])
 
   useEffect(() => {
-    if (!household?.id) return
+    if (!supabase || !household?.id) return
     // First pull after sign-in unions the device's existing list with the
     // household's — signing in keeps your data, it never starts you empty.
     pull(household.id)
-  }, [household?.id, pull])
+  }, [supabase, household?.id, pull])
 
   // --- push --------------------------------------------------------------
 
@@ -237,7 +250,7 @@ export function useHousehold() {
     }, PUSH_DEBOUNCE_MS)
 
     return () => clearTimeout(timer)
-  }, [items, household?.id])
+  }, [supabase, items, household?.id])
 
   // --- realtime ----------------------------------------------------------
 
@@ -260,13 +273,14 @@ export function useHousehold() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [household?.id, pull])
+  }, [supabase, household?.id, pull])
 
   // --- account actions ---------------------------------------------------
 
   const signIn = useCallback(async (email) => {
-    if (!supabase) throw new Error('Sign-in is not configured for this build.')
-    const { error: signInError } = await supabase.auth.signInWithOtp({
+    const client = await getSupabase()
+    if (!client) throw new Error('Sign-in is not configured for this build.')
+    const { error: signInError } = await client.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin },
     })
@@ -274,8 +288,8 @@ export function useHousehold() {
   }, [])
 
   const signOut = useCallback(async () => {
-    if (!supabase) return
-    await supabase.auth.signOut()
+    const client = await getSupabase()
+    if (client) await client.auth.signOut()
   }, [])
 
   const renameHousehold = useCallback(
@@ -292,7 +306,7 @@ export function useHousehold() {
       if (renameError) throw renameError
       if (data?.[0]) setHousehold(data[0])
     },
-    [household?.id, household?.name]
+    [supabase, household?.id, household?.name]
   )
 
   const leaveHousehold = useCallback(async () => {
@@ -309,12 +323,13 @@ export function useHousehold() {
     setMembers([])
     setRole(null)
     setStatus('no-household')
-  }, [session?.user?.id, household?.id])
+  }, [supabase, session?.user?.id, household?.id])
 
   const createHousehold = useCallback(
     async (name) => {
-      if (!supabase) throw new Error('Sign-in is not configured for this build.')
-      const { data, error: rpcError } = await supabase.rpc('create_household', { name })
+      const client = await getSupabase()
+      if (!client) throw new Error('Sign-in is not configured for this build.')
+      const { data, error: rpcError } = await client.rpc('create_household', { name })
       if (rpcError) throw rpcError
       setRole('owner')
       setHousehold(data)
@@ -324,8 +339,9 @@ export function useHousehold() {
   )
 
   const joinHousehold = useCallback(async (inviteCode) => {
-    if (!supabase) throw new Error('Sign-in is not configured for this build.')
-    const { data, error: rpcError } = await supabase.rpc('join_household', {
+    const client = await getSupabase()
+    if (!client) throw new Error('Sign-in is not configured for this build.')
+    const { data, error: rpcError } = await client.rpc('join_household', {
       invite_code: inviteCode,
     })
     if (rpcError) throw rpcError
